@@ -123,15 +123,15 @@ public class FileBackedBlockingQueue<E> extends AbstractQueue<E> implements
     public boolean offer(E e) {
 	Preconditions.checkNotNull(e);
 	writeLock.lock();
-	int c = -1;
+	int c = count.get();
 	try {
 	    insert(e);
+	    if (c == 0)
+		signalNotEmpty();
 	    c = count.incrementAndGet();
 	} finally {
 	    writeLock.unlock();
 	}
-	if (c == 0)
-	    signalNotEmpty();
 	return c >= 0;
     }
 
