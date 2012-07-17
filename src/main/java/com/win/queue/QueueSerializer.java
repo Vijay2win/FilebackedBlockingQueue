@@ -1,13 +1,12 @@
 package com.win.queue;
 
 /**
- * Defines the method of serialization of the objects.
- * Advice: Never use Java's Serialization it is expensive.
+ * Defines the method of serialization of the objects. Advice: Never use Java's
+ * Serialization it is expensive.
  * 
  * @author Vijay Parthasarathy
  */
-public interface QueueSerializer<T>
-{
+public interface QueueSerializer<T> {
     /**
      * Serialize the specified type into the specified DataOutputStream
      * instance.

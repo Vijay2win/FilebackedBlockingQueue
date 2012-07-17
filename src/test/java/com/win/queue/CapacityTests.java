@@ -1,6 +1,5 @@
 package com.win.queue;
 
-public class CapacityTests
-{
+public class CapacityTests {
 
 }

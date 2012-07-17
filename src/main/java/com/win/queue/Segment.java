@@ -13,8 +13,7 @@ import java.nio.channels.FileChannel;
  * 
  * @author Vijay Parthasarathy
  */
-public class Segment<E>
-{
+public class Segment<E> {
     private static final int END_OF_SEGMENT_MARKER = -1;
     static final int ENTRY_OVERHEAD_SIZE = 4 + 1;
 
@@ -27,183 +26,160 @@ public class Segment<E>
     private int readPosition;
     private boolean needsSync = true;
 
-    protected Segment(File directory, long size, QueueSerializer<E> serializer)
-    {
-        this(directory, "Segment-" + System.nanoTime() + ".db", size, serializer);
+    protected Segment(File directory, long size, QueueSerializer<E> serializer) {
+	this(directory, "Segment-" + System.nanoTime() + ".db", size,
+		serializer);
     }
 
-    private Segment(File directory, String fileName, long length, QueueSerializer<E> serializer)
-    {
-        try
-        {
-            if (length > Integer.MAX_VALUE)
-                throw new IllegalArgumentException("size > Integer.Max is not supported.");
-            this.serializer = serializer;
-            this.logFile = new File(directory, fileName);
-            logFileAccessor = new RandomAccessFile(logFile, "rw");
-            logFileAccessor.setLength(length);
+    private Segment(File directory, String fileName, long length,
+	    QueueSerializer<E> serializer) {
+	try {
+	    if (length > Integer.MAX_VALUE)
+		throw new IllegalArgumentException(
+			"size > Integer.Max is not supported.");
+	    this.serializer = serializer;
+	    this.logFile = new File(directory, fileName);
+	    logFileAccessor = new RandomAccessFile(logFile, "rw");
+	    logFileAccessor.setLength(length);
 
-            buffer = logFileAccessor.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, length);
-            buffer.putInt(END_OF_SEGMENT_MARKER);
-        }
-        catch (IOException e)
-        {
-            throw new IOError(e);
-        }
+	    buffer = logFileAccessor.getChannel().map(
+		    FileChannel.MapMode.READ_WRITE, 0, length);
+	    buffer.putInt(END_OF_SEGMENT_MARKER);
+	} catch (IOException e) {
+	    throw new IOError(e);
+	}
     }
 
-    void discard()
-    {
-        close();
-        logFile.delete();
+    void discard() {
+	close();
+	logFile.delete();
     }
 
-    Segment<E> recycle()
-    {
-        buffer.position(0);
-        buffer.putInt(END_OF_SEGMENT_MARKER);
-        buffer.position(0);
-        buffer.force();
-        readPosition = 0;
-        needsSync = false;
-        return this;
+    Segment<E> recycle() {
+	buffer.position(0);
+	buffer.putInt(END_OF_SEGMENT_MARKER);
+	buffer.position(0);
+	buffer.force();
+	readPosition = 0;
+	needsSync = false;
+	return this;
     }
 
-    boolean hasCapacityFor(E element)
-    {
-        return (serializer.serializedSize(element) + ENTRY_OVERHEAD_SIZE) <= buffer.remaining();
+    boolean hasCapacityFor(E element) {
+	return (serializer.serializedSize(element) + ENTRY_OVERHEAD_SIZE) <= buffer
+		.remaining();
     }
 
-    void add(E element)
-    {
-        byte[] serializedRow = serializer.serialize(element);
-        buffer.position(position());
-        buffer.putInt(serializedRow.length);
-        buffer.put((byte) 0);
-        buffer.put(serializedRow);
-        if (buffer.remaining() >= 4)
-            buffer.putInt(END_OF_SEGMENT_MARKER);
-        needsSync = true;
+    void add(E element) {
+	byte[] serializedRow = serializer.serialize(element);
+	buffer.position(position());
+	buffer.putInt(serializedRow.length);
+	buffer.put((byte) 0);
+	buffer.put(serializedRow);
+	if (buffer.remaining() >= 4)
+	    buffer.putInt(END_OF_SEGMENT_MARKER);
+	needsSync = true;
     }
 
-    E read()
-    {
-        while (readPosition < position())
-        {
-            SegmentEntry<E> entry = readInternal(readPosition);
-            readPosition += (ENTRY_OVERHEAD_SIZE + entry.size);
-            if (entry.markDeleted)
-                continue;
-            return entry.element;
-        }
-        return null;
+    E read() {
+	while (readPosition < position()) {
+	    SegmentEntry<E> entry = readInternal(readPosition);
+	    readPosition += (ENTRY_OVERHEAD_SIZE + entry.size);
+	    if (entry.markDeleted)
+		continue;
+	    return entry.element;
+	}
+	return null;
     }
 
-    E readWithoutSeek()
-    {
-        while (readPosition < position())
-        {
-            SegmentEntry<E> entry = readInternal(readPosition);
-            if (entry.markDeleted)
-                continue;
-            return entry.element;
-        }
-        return null;
+    E readWithoutSeek() {
+	while (readPosition < position()) {
+	    SegmentEntry<E> entry = readInternal(readPosition);
+	    if (entry.markDeleted)
+		continue;
+	    return entry.element;
+	}
+	return null;
     }
 
-    SegmentEntry<E> readInternal(int position)
-    {
-        ByteBuffer dupe = buffer.duplicate();
-        dupe.position(position);
-        int size = dupe.getInt();
-        if (size == END_OF_SEGMENT_MARKER)
-            return null;
-        byte b = dupe.get();
-        if (b == 0)
-        {
-            byte[] buffer = new byte[size];
-            dupe.get(buffer);
-            return new SegmentEntry<E>(this, size, false, serializer.deserialize(buffer));
-        }
-        return new SegmentEntry<E>(this, size, true, null);
+    SegmentEntry<E> readInternal(int position) {
+	ByteBuffer dupe = buffer.duplicate();
+	dupe.position(position);
+	int size = dupe.getInt();
+	if (size == END_OF_SEGMENT_MARKER)
+	    return null;
+	byte b = dupe.get();
+	if (b == 0) {
+	    byte[] buffer = new byte[size];
+	    dupe.get(buffer);
+	    return new SegmentEntry<E>(this, size, false,
+		    serializer.deserialize(buffer));
+	}
+	return new SegmentEntry<E>(this, size, true, null);
     }
 
-    static class SegmentEntry<E>
-    {
-        final int size;
-        final E element;
-        final boolean markDeleted;
-        final Segment<E> parent;
+    static class SegmentEntry<E> {
+	final int size;
+	final E element;
+	final boolean markDeleted;
+	final Segment<E> parent;
 
-        public SegmentEntry(Segment<E> parent, int size, boolean markDeleted, E element)
-        {
-            this.parent = parent;
-            this.size = size;
-            this.element = element;
-            this.markDeleted = markDeleted;
-        }
+	public SegmentEntry(Segment<E> parent, int size, boolean markDeleted,
+		E element) {
+	    this.parent = parent;
+	    this.size = size;
+	    this.element = element;
+	    this.markDeleted = markDeleted;
+	}
     }
 
     /**
      * TODO think about this and see if we need this. We might not need to sync
      * it for ever and stay in the file cache.
      */
-    void sync() throws IOException
-    {
-        if (needsSync)
-        {
-            buffer.force();
-            needsSync = false;
-        }
+    void sync() throws IOException {
+	if (needsSync) {
+	    buffer.force();
+	    needsSync = false;
+	}
     }
 
-    String getName()
-    {
-        return logFile.getName();
+    String getName() {
+	return logFile.getName();
     }
 
-    void close()
-    {
-        try
-        {
-            logFileAccessor.close();
-        }
-        catch (IOException e)
-        {
-            throw new IOError(e);
-        }
+    void close() {
+	try {
+	    logFileAccessor.close();
+	} catch (IOException e) {
+	    throw new IOError(e);
+	}
     }
 
     @Override
-    public String toString()
-    {
-        return "Segment(" + getName() + ')';
+    public String toString() {
+	return "Segment(" + getName() + ')';
     }
 
-    int position()
-    {
-        return buffer.position() - 4;
+    int position() {
+	return buffer.position() - 4;
     }
 
-    boolean hasData()
-    {
-        return hasData(readPosition);
+    boolean hasData() {
+	return hasData(readPosition);
     }
 
-    boolean hasData(int position)
-    {
-        return position < position();
+    boolean hasData(int position) {
+	return position < position();
     }
 
-    public int getReadPosition()
-    {
-        return readPosition;
+    public int getReadPosition() {
+	return readPosition;
     }
 
-    public void remove(int position)
-    {
-        ByteBuffer dupe = buffer.duplicate();
-        dupe.position(position + 4);
-        dupe.put((byte) -1);
+    public void remove(int position) {
+	ByteBuffer dupe = buffer.duplicate();
+	dupe.position(position + 4);
+	dupe.put((byte) -1);
     }
 }

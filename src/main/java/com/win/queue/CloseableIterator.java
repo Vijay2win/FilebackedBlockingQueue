@@ -7,8 +7,8 @@ import java.util.Iterator;
  * 
  * @author Vijay Parthasarathy
  */
-public interface CloseableIterator<T> extends Iterator<T>
-{
+public interface CloseableIterator<T> extends Iterator<T> {
     public void removeData();
+
     public void close();
 }
