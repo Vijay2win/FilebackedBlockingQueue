@@ -11,11 +11,9 @@ import org.junit.Test;
 
 public class MultiThreadedTest extends AbstractQueueTest
 {
-    private FileBackedBlockingQueue<Runnable> queue = new FileBackedBlockingQueue.Builder<Runnable>()
-                                                            .directory(TEST_DIR)
-                                                            .serializer(StringRunnable.serializer)
-                                                            .build();
-    private ThreadPoolExecutor executor = new ThreadPoolExecutor(10, 10, 60L, TimeUnit.SECONDS, queue);;
+    private static final int NUM_THREADS = 10;
+    private FileBackedBlockingQueue<Runnable> queue = new FileBackedBlockingQueue.Builder<Runnable>().directory(TEST_DIR).serializer(StringRunnable.serializer).build();
+    private ThreadPoolExecutor executor = new ThreadPoolExecutor(NUM_THREADS, NUM_THREADS, 60L, TimeUnit.SECONDS, queue);;
     private static CountDownLatch latch = new CountDownLatch(2000);
 
     public static class StringRunnable implements Runnable
@@ -75,12 +73,9 @@ public class MultiThreadedTest extends AbstractQueueTest
     @Test
     public void concurrentReadWrite() throws InterruptedException
     {
-        final FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>()
-                .directory(TEST_DIR)
-                .serializer(new StringSerializer())
-                .build();
+        final FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>().directory(TEST_DIR).serializer(new StringSerializer()).build();
         final CountDownLatch latch = new CountDownLatch(2000);
-        ExecutorService executor = Executors.newFixedThreadPool(10);
+        ExecutorService executor = Executors.newFixedThreadPool(NUM_THREADS);
         for (int i = 0; i < 2000; i++)
         {
             executor.execute(new Runnable()
@@ -96,7 +91,6 @@ public class MultiThreadedTest extends AbstractQueueTest
                     }
                     catch (InterruptedException e)
                     {
-                        e.printStackTrace();
                     }
                 }
             });
@@ -106,5 +100,39 @@ public class MultiThreadedTest extends AbstractQueueTest
 
         executor.shutdown();
         Assert.assertEquals(0, queue.size());
+    }
+
+    @Test
+    public void testConcurrentIterator() throws InterruptedException
+    {
+        final FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>().directory(TEST_DIR).serializer(new StringSerializer())
+                .segmentSize((TEST_STRING.length() + Segment.ENTRY_OVERHEAD_SIZE + 10) * 100).build();
+        for (int i = 0; i < 2000; i++)
+            queue.add(TEST_STRING + i);
+        final CountDownLatch latch = new CountDownLatch(NUM_THREADS);
+        ExecutorService executor = Executors.newFixedThreadPool(NUM_THREADS);
+        for (int i = 0; i < NUM_THREADS; i++)
+        {
+            executor.execute(new Runnable()
+            {
+                public void run()
+                {
+                    try
+                    {
+                        CloseableIterator<String> it = queue.iterator();
+                        for (int i = 0; i < 2000; i++)
+                            queue.offer(it.next());
+                        latch.countDown();
+                        Thread.sleep(1);
+                    }
+                    catch (InterruptedException e)
+                    {
+                    }
+                }
+            });
+        }
+        latch.await();
+        Assert.assertEquals(queue.size(), (NUM_THREADS * 2000) /* 10 threads inserting */ + 2000 /* intial size*/);
+        executor.shutdown();
     }
 }

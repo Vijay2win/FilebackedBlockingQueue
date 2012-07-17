@@ -8,8 +8,6 @@ import java.nio.ByteBuffer;
 import java.nio.MappedByteBuffer;
 import java.nio.channels.FileChannel;
 
-import com.google.common.annotations.VisibleForTesting;
-
 /**
  * Segment of the file system which is buffered.
  * 
@@ -18,16 +16,13 @@ import com.google.common.annotations.VisibleForTesting;
 public class Segment<E>
 {
     private static final int END_OF_SEGMENT_MARKER = -1;
-
-    @VisibleForTesting
     static final int ENTRY_OVERHEAD_SIZE = 4 + 1;
 
-    private final File directory;
     private final File logFile;
     private final RandomAccessFile logFileAccessor;
     private final MappedByteBuffer buffer;
-    private final long length;
     private final QueueSerializer<E> serializer;
+    protected volatile boolean referenced = false;
 
     private int readPosition;
     private boolean needsSync = true;
@@ -44,11 +39,9 @@ public class Segment<E>
             if (length > Integer.MAX_VALUE)
                 throw new IllegalArgumentException("size > Integer.Max is not supported.");
             this.serializer = serializer;
-            this.directory = directory;
             this.logFile = new File(directory, fileName);
             logFileAccessor = new RandomAccessFile(logFile, "rw");
             logFileAccessor.setLength(length);
-            this.length = length;
 
             buffer = logFileAccessor.getChannel().map(FileChannel.MapMode.READ_WRITE, 0, length);
             buffer.putInt(END_OF_SEGMENT_MARKER);
@@ -71,8 +64,9 @@ public class Segment<E>
         buffer.putInt(END_OF_SEGMENT_MARKER);
         buffer.position(0);
         buffer.force();
-        close();
-        return new Segment<E>(directory, getName(), length, serializer);
+        readPosition = 0;
+        needsSync = false;
+        return this;
     }
 
     boolean hasCapacityFor(E element)
@@ -96,7 +90,7 @@ public class Segment<E>
     {
         while (readPosition < position())
         {
-            SegmentEntry entry = readInternal(readPosition);
+            SegmentEntry<E> entry = readInternal(readPosition);
             readPosition += (ENTRY_OVERHEAD_SIZE + entry.size);
             if (entry.markDeleted)
                 continue;
@@ -109,7 +103,7 @@ public class Segment<E>
     {
         while (readPosition < position())
         {
-            SegmentEntry entry = readInternal(readPosition);
+            SegmentEntry<E> entry = readInternal(readPosition);
             if (entry.markDeleted)
                 continue;
             return entry.element;
@@ -117,7 +111,7 @@ public class Segment<E>
         return null;
     }
 
-    SegmentEntry readInternal(int position)
+    SegmentEntry<E> readInternal(int position)
     {
         ByteBuffer dupe = buffer.duplicate();
         dupe.position(position);
@@ -129,19 +123,21 @@ public class Segment<E>
         {
             byte[] buffer = new byte[size];
             dupe.get(buffer);
-            return new SegmentEntry(size, false, serializer.deserialize(buffer));
+            return new SegmentEntry<E>(this, size, false, serializer.deserialize(buffer));
         }
-        return new SegmentEntry(size, true, null);
+        return new SegmentEntry<E>(this, size, true, null);
     }
 
-    class SegmentEntry
+    static class SegmentEntry<E>
     {
         final int size;
         final E element;
         final boolean markDeleted;
+        final Segment<E> parent;
 
-        public SegmentEntry(int size, boolean markDeleted, E element)
+        public SegmentEntry(Segment<E> parent, int size, boolean markDeleted, E element)
         {
+            this.parent = parent;
             this.size = size;
             this.element = element;
             this.markDeleted = markDeleted;
@@ -191,6 +187,23 @@ public class Segment<E>
 
     boolean hasData()
     {
-        return readPosition < position();
+        return hasData(readPosition);
+    }
+
+    boolean hasData(int position)
+    {
+        return position < position();
+    }
+
+    public int getReadPosition()
+    {
+        return readPosition;
+    }
+
+    public void remove(int position)
+    {
+        ByteBuffer dupe = buffer.duplicate();
+        dupe.position(position + 4);
+        dupe.put((byte) -1);
     }
 }

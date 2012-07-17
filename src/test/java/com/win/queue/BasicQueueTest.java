@@ -5,7 +5,7 @@ import java.util.ArrayList;
 import org.junit.Assert;
 import org.junit.Test;
 
-public class FileBackedQueueTest extends AbstractQueueTest
+public class BasicQueueTest extends AbstractQueueTest
 {
     @Test
     public void tesOffer()
@@ -78,5 +78,62 @@ public class FileBackedQueueTest extends AbstractQueueTest
 
         for (int i = 1000; i < 2000; i++)
             Assert.assertEquals(TEST_STRING + i, queue.poll());
+    }
+
+    @Test
+    public void testIterator()
+    {
+        // mark the segment size approx for 100 elements.
+        FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>().directory(TEST_DIR).serializer(new StringSerializer())
+                .segmentSize((TEST_STRING.length() + Segment.ENTRY_OVERHEAD_SIZE + 10) * 100).build();
+        // init
+        for (int i = 0; i < 2000; i++)
+            queue.add(TEST_STRING + i);
+
+        CloseableIterator<String> it = queue.iterator();
+        for (int i = 0; i < 2000; i++)
+        {
+            String out = it.next();
+            Assert.assertEquals(TEST_STRING + i, out);
+        }
+    }
+
+    @Test
+    public void testRemove()
+    {
+        // mark the segment size approx for 100 elements.
+        FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>().directory(TEST_DIR).serializer(new StringSerializer())
+                .segmentSize((TEST_STRING.length() + Segment.ENTRY_OVERHEAD_SIZE + 10) * 100).build();
+        // init
+        for (int i = 0; i < 2000; i++)
+            queue.add(TEST_STRING + i);
+        // remove some random data.
+        for (int i = 110; i < 221; i++)
+            queue.remove(TEST_STRING + i);
+        // test size
+        Assert.assertEquals(queue.size(), 1889);
+        for (int i = 0; i < 2000; i++)
+        {
+            if (i >= 110 && i < 221)
+                continue;
+            // test if they are all equal.
+            Assert.assertEquals(TEST_STRING + i, queue.poll());
+        }
+    }
+
+    @Test
+    public void testClear()
+    {
+        // mark the segment size approx for 100 elements.
+        FileBackedBlockingQueue<String> queue = new FileBackedBlockingQueue.Builder<String>().directory(TEST_DIR).serializer(new StringSerializer())
+                .segmentSize((TEST_STRING.length() + Segment.ENTRY_OVERHEAD_SIZE + 10) * 100).build();
+        // init
+        for (int i = 0; i < 2000; i++)
+            queue.add(TEST_STRING + i);
+
+        queue.clear();
+        Assert.assertEquals(queue.size(), 0);
+        for (int i = 0; i < 2000; i++)
+            Assert.assertEquals(null, queue.poll());
     }
 }

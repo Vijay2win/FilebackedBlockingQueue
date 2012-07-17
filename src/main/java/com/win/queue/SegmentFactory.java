@@ -2,6 +2,8 @@ package com.win.queue;
 
 import java.io.File;
 import java.lang.management.ManagementFactory;
+import java.util.ArrayDeque;
+import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 
 import javax.management.MBeanServer;
@@ -45,8 +47,10 @@ public class SegmentFactory<E> implements SegmentFactoryMBean
 
     public Segment<E> newSegment()
     {
-        if (inActiveSegments.isEmpty())
+        if (inActiveSegments.isEmpty() || inActiveSegments.poll().referenced)
         {
+            if (getTotalReservedBytes() > fs_max)
+                throw new RuntimeException("Queue Overflow, Increase the Max fs size or remove the elements from the queue.");
             currentSegment = new Segment<E>(directory, segmentSize, serializer);
             activeSegments.offer(currentSegment);
         }
@@ -70,11 +74,22 @@ public class SegmentFactory<E> implements SegmentFactoryMBean
         if (!segment.hasData() && activeSegments.size() > 1)
         {
             Segment<E> seg = activeSegments.poll();
-            if (getTotalReservedBytes() > fs_max)
+            if (getTotalReservedBytes() > fs_max && !seg.referenced)
                 seg.discard();
             inActiveSegments.offer(seg.recycle());
         }
         return activeSegments.peek();
+    }
+
+    public Queue<Segment<E>> cloneActive()
+    {
+        ArrayDeque<Segment<E>> q = new ArrayDeque<Segment<E>>(activeSegments.size());
+        for (Segment<E> segment : activeSegments)
+        {
+            segment.referenced = true;
+            q.add(segment);
+        }
+        return q;
     }
 
     public int getActiveSegments()

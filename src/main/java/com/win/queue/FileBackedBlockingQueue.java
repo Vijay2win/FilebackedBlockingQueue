@@ -3,7 +3,7 @@ package com.win.queue;
 import java.io.File;
 import java.util.AbstractQueue;
 import java.util.Collection;
-import java.util.Iterator;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -12,12 +12,12 @@ import java.util.concurrent.locks.ReentrantLock;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Preconditions;
+import com.google.common.collect.AbstractIterator;
+import com.win.queue.Segment.SegmentEntry;
 
 /**
  * File Backed Blocking Queue. Similar to the LinkedBlockingQueue except that
  * there is an File component.
- * 
- * TODO Follow-up updates in github.
  * 
  * @author Vijay Parthasarathy
  */
@@ -40,22 +40,31 @@ public class FileBackedBlockingQueue<E> extends AbstractQueue<E> implements Bloc
     {
         private File directory;
         private QueueSerializer<E> seralizer;
-        private int segmentSize = 128 * 1024 * 1024; // 128 M
-        private long fs_size = 40 * 1024 * 1024 * 1024; // 40G
+        private long segmentSize = 128L * 1024 * 1024; // 128 M
+        private long fs_size = 40L * 1024 * 1024 * 1024; // 40G
 
+        /**
+         * Directory where the file based queue will reside.
+         */
         public Builder<E> directory(File directory)
         {
             this.directory = directory;
             return this;
         }
 
+        /**
+         * Add serializer which will be used to read and write the objects to disk.
+         */
         public Builder<E> serializer(QueueSerializer<E> seralizer)
         {
             this.seralizer = seralizer;
             return this;
         }
 
-        public Builder<E> segmentSize(int size)
+        /**
+         * Segment size.
+         */
+        public Builder<E> segmentSize(long size)
         {
             this.segmentSize = size;
             return this;
@@ -113,20 +122,7 @@ public class FileBackedBlockingQueue<E> extends AbstractQueue<E> implements Bloc
 
     public void put(E e) throws InterruptedException
     {
-        Preconditions.checkNotNull(e);
-        writeLock.lockInterruptibly();
-        int c = -1;
-        try
-        {
-            insert(e);
-            c = count.getAndIncrement();
-        }
-        finally
-        {
-            writeLock.unlock();
-        }
-        if (c == 0)
-            signalNotEmpty();
+        offer(e);
     }
 
     public boolean offer(E e, long timeout, TimeUnit unit) throws InterruptedException
@@ -280,20 +276,19 @@ public class FileBackedBlockingQueue<E> extends AbstractQueue<E> implements Bloc
 
     public boolean remove(Object o)
     {
-        // TODO fix it. Iterate and mark it for remove.
-        throw new UnsupportedOperationException();
-    }
-
-    public Object[] toArray()
-    {
-        // TODO fix it. Iterate and copy.
-        throw new UnsupportedOperationException();
-    }
-
-    public <T> T[] toArray(T[] a)
-    {
-        // TODO fix it.
-        throw new UnsupportedOperationException();
+        Preconditions.checkNotNull(o);
+        CloseableIterator<E> it = iterator();
+        while (it.hasNext())
+        {
+            E element = it.next();
+            if (element.equals(o))
+            {
+                it.removeData();
+                count.decrementAndGet();
+                return true;
+            }
+        }
+        return false;
     }
 
     public String toString()
@@ -354,79 +349,99 @@ public class FileBackedBlockingQueue<E> extends AbstractQueue<E> implements Bloc
         writeLock.lock();
     }
 
-    public Iterator<E> iterator()
+    /**
+     * Returns a iterator for the data in the queue with the following
+     * properties.
+     * <p> {@link CloseableIterator#removeData()} is an atomic operation. 
+     * <p> Newer Objects added to different segment (other than the current) is not seen. 
+     * <p> You should call {@link CloseableIterator#close()} else files/segments 
+     * will not be un-referenced causing additional Disk space usage.
+     * <p> NOTE: you must call {@link CloseableIterator#close()} explicitly
+     * else the additional disk space will be used until the iterator is
+     * GC'ed. This requirement does not apply if the {@link CloseableIterator#hasNext()}
+     * returns false.
+     */
+    public CloseableIterator<E> iterator()
     {
-        // TODO fix it.
-        throw new UnsupportedOperationException();
+        return new ElementItrerator();
     }
 
-    // private class ElementItrerator implements Iterator<E> {
-    // private SegmentEntry current;
-    // private SegmentEntry lastRet;
-    // private E currentElement;
-    //
-    // ElementItrerator() {
-    // writeLock.lock();
-    // readLock.lock();
-    // try {
-    // current = head.next;
-    // if (current != null)
-    // currentElement = current.item;
-    // } finally {
-    // readLock.unlock();
-    // writeLock.unlock();
-    // }
-    // }
-    //
-    // public boolean hasNext() {
-    // return current != null;
-    // }
-    //
-    // public E next() {
-    // writeLock.lock();
-    // readLock.lock();
-    // try {
-    // if (current == null)
-    // throw new NoSuchElementException();
-    // E x = currentElement;
-    // lastRet = current;
-    // current = current.next;
-    // if (current != null)
-    // currentElement = current.item;
-    // return x;
-    // } finally {
-    // readLock.unlock();
-    // writeLock.unlock();
-    // }
-    // }
-    //
-    // public void remove() {
-    // if (lastRet == null)
-    // throw new IllegalStateException();
-    // writeLock.lock();
-    // readLock.lock();
-    // try {
-    // SegmentEntry node = lastRet;
-    // lastRet = null;
-    // SegmentEntry trail = head;
-    // SegmentEntry p = head.next;
-    // while (p != null && p != node) {
-    // trail = p;
-    // p = p.next;
-    // }
-    // if (p == node) {
-    // p.item = null;
-    // trail.next = p.next;
-    // if (last == p)
-    // last = trail;
-    // int c = count.getAndDecrement();
-    // if (c == capacity)
-    // notFull.signalAll();
-    // }
-    // } finally {
-    // readLock.unlock();
-    // writeLock.unlock();
-    // }
-    // }
-    // }
+    public class ElementItrerator extends AbstractIterator<E> implements CloseableIterator<E>
+    {
+        private Queue<Segment<E>> allSegments;
+        private int position;
+        private SegmentEntry<E> current;
+
+        private ElementItrerator()
+        {
+            readLock.lock();
+            writeLock.lock();
+            try
+            {
+                allSegments = segments.cloneActive();
+                position = allSegments.peek().getReadPosition();
+            }
+            finally
+            {
+                readLock.unlock();
+                writeLock.unlock();
+            }
+        }
+
+        @Override
+        protected E computeNext()
+        {
+            Segment<E> segment = null;
+            while ((segment = nextSegment()) != null)
+            {
+                if (!segment.hasData(position))
+                    return null;
+                SegmentEntry<E> element = null;
+                if ((element = segment.readInternal(position)) != null)
+                {
+                    position += (element.size + Segment.ENTRY_OVERHEAD_SIZE);
+                    current = element;
+                    if (element.markDeleted)
+                        continue;
+                    return element.element;
+                }
+            }
+            endOfData();
+            close();
+            return null;
+        }
+
+        public Segment<E> nextSegment()
+        {
+            Segment<E> segment = allSegments.peek();
+            if (!segment.hasData(position))
+            {
+                Segment<E> seg = allSegments.poll();
+                seg.referenced = false;
+                position = 0;
+            }
+            return allSegments.peek();
+        }
+
+        public void removeData()
+        {
+            Segment<E> seg = allSegments.poll();
+            seg.remove(position - current.size - Segment.ENTRY_OVERHEAD_SIZE);
+        }
+
+        public void close()
+        {
+            if (current != null)
+                current.parent.referenced = false;
+            Segment<E> segment;
+            while ((segment = allSegments.poll()) != null)
+                segment.referenced = false;
+        }
+
+        protected void finalize() throws Throwable
+        {
+            close();
+            super.finalize();
+        }
+    }
 }
