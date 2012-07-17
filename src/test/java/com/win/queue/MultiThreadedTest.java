@@ -39,7 +39,6 @@ public class MultiThreadedTest extends AbstractQueueTest {
 	    }
 
 	    public Runnable deserialize(byte[] bytes) {
-		// TODO Auto-generated method stub
 		return new StringRunnable(new String(bytes));
 	    }
 
