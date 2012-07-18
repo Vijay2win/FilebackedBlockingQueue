@@ -12,7 +12,9 @@ The functionality and complexity is comparable to LinkedBlockingQueue.
 * Segments are discard instead of recycling if the max file system size has reached.
 * Supports BlockingQueue API's.
 
-* Note: There is Serialization and de-serialization overhead. It might be hard to serialize objects with states.
+* Note: There is (de-)Serialization overhead.
+        When JVM exits or the system crashes the files are not in sync, hence we start with a new segments ignoring the old ones before the crash. 
+        The above can be solved by doing Periodic sync (not implemented by default).
 
 Example Code:
 =============
