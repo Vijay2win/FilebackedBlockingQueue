@@ -1,20 +1,18 @@
 FilebackedBlockingQueue
 =======================
 
-File based blocking queue is a simple java library utilizes MappedByteBuffer to store and retrieve data.
+File based blocking queue is a simple java library, utilizes MappedByteBuffer to store and retrieve data.
 The functionality and complexity is comparable to LinkedBlockingQueue.
 
-* The idea is most recent update to the Queue will be in the file cache and we will be accessed faster. 
-* Bigger the file we will have to do a seek (sequential IO) to retrieve data in order.
-* Removal of data from the queue is done by marking the data location and skipping them while reading.
-* The filesystem/space is split into multiple segments. Each segments are created on demand.
+* Most recent update to the Queue will be in the file cache and hence an immediate read will be faster. 
+* Bigger the queue, we will have to do a seek (but sequential IO) to retrieve data in order.
+* Removing am element is same as marking the data location for delete and skipping them while reading. (Hence atomic)
+* The filesystem/space is split into multiple segments. Each segment is created on demand as the queue grows.
 * The segments are recycled (To reduce the number of FD's in use) after the data is retrieved.
-* We also discard the segments instead of recycling if the max file system size is reached.
-* Supports all the API's as LinkedBlockingQueue.
+* Segments are discard instead of recycling if the max file system size has reached.
+* Supports BlockingQueue API's.
 
-* Note: There is Serialization and de-serialization over, and it might be hard to do so with objects with state.
-        Give care while implementing hashCode() and equals() methods for the elements of the queue.
-        
+* Note: There is Serialization and de-serialization overhead. It might be hard to serialize objects with states.
 
 Example Code:
 =============

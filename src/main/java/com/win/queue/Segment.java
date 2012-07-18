@@ -24,7 +24,6 @@ public class Segment<E> {
     protected volatile boolean referenced = false;
 
     private int readPosition;
-    private boolean needsSync = true;
 
     protected Segment(File directory, long size, QueueSerializer<E> serializer) {
 	this(directory, "Segment-" + System.nanoTime() + ".db", size,
@@ -61,7 +60,6 @@ public class Segment<E> {
 	buffer.position(0);
 	buffer.force();
 	readPosition = 0;
-	needsSync = false;
 	return this;
     }
 
@@ -78,7 +76,6 @@ public class Segment<E> {
 	buffer.put(serializedRow);
 	if (buffer.remaining() >= 4)
 	    buffer.putInt(END_OF_SEGMENT_MARKER);
-	needsSync = true;
     }
 
     E read() {
@@ -130,17 +127,6 @@ public class Segment<E> {
 	    this.size = size;
 	    this.element = element;
 	    this.markDeleted = markDeleted;
-	}
-    }
-
-    /**
-     * TODO think about this and see if we need this. We might not need to sync
-     * it for ever and stay in the file cache.
-     */
-    void sync() throws IOException {
-	if (needsSync) {
-	    buffer.force();
-	    needsSync = false;
 	}
     }
 
